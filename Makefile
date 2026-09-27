@@ -1,44 +1,39 @@
 .PHONY: proto build lint test \
         run-orch run-worker \
-        up-gork down-gork \
         redis-up redis-down
 
 # Кодогенерация
+PROTO_INCLUDE := /usr/include/google/protobuf/timestamp.proto
+
 proto:
-	protoc \
+	@protoc \
 		--proto_path=proto \
+		--proto_path=$(PROTO_INCLUDE) \
 		--go_out=gen/go --go_opt=paths=source_relative \
 		--go-grpc_out=gen/go --go-grpc_opt=paths=source_relative \
 		proto/orchestrator/v1/orchestrator.proto
 
 # Сборка и проверки
 build: proto
-	go build -o bin/orchestrator ./cmd/orchestrator
-	go build -o bin/worker ./cmd/worker
+	@go build -o bin/orchestrator ./cmd/orchestrator
+	@go build -o bin/worker ./cmd/worker
 
 lint:
-	golangci-lint run ./...
+	@golangci-lint run ./...
 
 test:
-	go test ./...
+	@go test ./...
 
 # Локальный запуск (в отдельных терминалах)
 run-orch: build
-	./bin/orchestrator
+	@./bin/orchestrator
 
 run-worker: build
-	./bin/worker
-
-# Docker Compose
-up-gork:
-	docker compose up -d
-
-down-gork:
-	docker compose down
+	@./bin/worker
 
 # Redis отдельно (для локальной разработки)
 redis-up:
-	docker compose up -d redis
+	@docker compose up -d redis
 
 redis-down:
-	docker compose down redis
+	@docker compose down redis

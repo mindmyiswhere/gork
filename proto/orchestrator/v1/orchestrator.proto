@@ -1,0 +1,125 @@
+syntax = "proto3";
+
+package orchestrator.v1;
+
+option go_package = "github.com/mindmyiswhere/gork/gen/go/orchestrator/v1;orchestratorv1";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+
+enum TaskStatus {
+  TASK_STATUS_UNSPECIFIED = 0;
+  TASK_STATUS_PENDING     = 1; // в очереди, ждёт воркера
+  TASK_STATUS_RUNNING     = 2; // взята воркером, выполняется
+  TASK_STATUS_SUCCEEDED   = 3; // успешно завершена
+  TASK_STATUS_FAILED      = 4; // провалена после всех попыток
+  TASK_STATUS_CANCELLED   = 5; // отменена клиентом
+}
+
+// Описание задачи, как её видит оркестратор
+message Task {
+  string id                            = 1;
+  string type                          = 2;
+  bytes  payload                       = 3;
+  int32  priority                      = 4;
+  int32  max_retries                   = 5;
+  int32  attempt                       = 6;
+  google.protobuf.Duration timeout     = 7;
+  google.protobuf.Timestamp created_at = 8;
+}
+
+// Результат выполнения задачи.
+message TaskResult {
+  string task_id    = 1;
+  TaskStatus status = 2;
+  bytes  output     = 3; // результат работы
+  string error      = 4; // заполнено, если status = FAILED
+  int32  attempt    = 5; // номер попытки, начиная с 1
+}
+
+// Сервис для клиентов
+
+service ClientService {
+  // Создать задачу. Возвращает её id
+  rpc SubmitTask(SubmitTaskRequest) returns (SubmitTaskResponse);
+
+  // Получить текущее состояние задачи
+  rpc GetTask(GetTaskRequest) returns (TaskResult);
+
+  // Следить за статусом задачи в реальном времени
+  rpc WatchTask(WatchTaskRequest) returns (stream TaskResult);
+
+  // Отменить задачу
+  rpc CancelTask(CancelTaskRequest) returns (CancelTaskResponse);
+}
+
+message SubmitTaskRequest {
+  string type     = 1;
+  bytes  payload  = 2;
+  int32  priority = 3;
+  int32  max_retries = 4;
+  google.protobuf.Duration timeout = 5;
+}
+
+message SubmitTaskResponse {
+  string task_id = 1;
+}
+
+message GetTaskRequest {
+  string task_id = 1;
+}
+
+message WatchTaskRequest {
+  string task_id = 1;
+}
+
+message CancelTaskRequest {
+  string task_id = 1;
+}
+
+message CancelTaskResponse {
+  bool cancelled = 1;
+}
+
+// Сервис для воркеров
+
+service WorkerService {
+  // Воркер держит один bidi-стрим: получает задачи, шлёт heartbeat и результаты.
+  rpc Work(stream WorkerMessage) returns (stream TaskAssignment);
+}
+
+// Сообщения от воркера к оркестратору.
+message WorkerMessage {
+  oneof msg {
+    Register  register  = 1; // первое сообщение после подключения
+    Heartbeat heartbeat = 2;
+    TaskResult result   = 3;
+  }
+}
+
+// Воркер регистрируется: сообщает, какие типы задач умеет, и свою конкурентность.
+message Register {
+  string worker_id              = 1;
+  repeated string supported_types = 2; // если пусто — умеет всё
+  int32  concurrency            = 3;
+}
+
+// Периодический «я жив».
+message Heartbeat {
+  string worker_id              = 1;
+  repeated string running_task_ids = 2;
+}
+
+// Задание задачи воркеру или команда отмены.
+message TaskAssignment {
+  oneof msg {
+    Task task = 1;
+    CancelCommand cancel = 2;
+  }
+}
+
+// Команда отмены задачи, отправляется воркеру через стрим.
+message CancelCommand {
+  string task_id = 1;
+  string reason  = 2;
+}
