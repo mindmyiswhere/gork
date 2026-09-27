@@ -23,13 +23,20 @@ test:
 	go test ./...
 
 # Локальный запуск (в отдельных терминалах)
-
 run-orch: build
 	./bin/orchestrator
 
 run-worker: build
 	./bin/worker
 
+# Docker Compose
+up-gork:
+	docker compose up -d
+
+down-gork:
+	docker compose down
+
+# Redis отдельно (для локальной разработки)
 redis-up:
 	docker compose up -d redis
 
