@@ -12,7 +12,10 @@ import (
 	"github.com/mindmyiswhere/gork/internal/domain"
 )
 
-const queueKey = "tasks:queue"
+const (
+	queueKey  = "tasks:queue"
+	leasesKey = "leases"
+)
 
 //go:embed scripts/pop_task.lua
 var popTaskScript string
@@ -40,11 +43,15 @@ func (q *TaskQueue) Enqueue(ctx context.Context, task *domain.Task) error {
 
 // Pop атомарно забирает задачу из очереди для воркера.
 // Если подходящей задачи нет — возвращает ("", nil).
-func (q *TaskQueue) Pop(ctx context.Context, workerID string, supportedTypes []string) (string, error) {
+func (q *TaskQueue) Pop(ctx context.Context, workerID string, supportedTypes []string, lease time.Duration) (string, error) {
+	now := time.Now()
+	deadline := now.Add(lease).UnixNano()
+
 	res, err := popTask.Run(ctx, q.rdb,
-		[]string{queueKey},
+		[]string{queueKey, leasesKey},
 		workerID,
-		time.Now().UnixNano(),
+		now.UnixNano(),
+		deadline,
 		strings.Join(supportedTypes, ","),
 	).Result()
 
@@ -60,4 +67,53 @@ func (q *TaskQueue) Pop(ctx context.Context, workerID string, supportedTypes []s
 		return "", nil
 	}
 	return id, nil
+}
+
+// ExtendLease продлевает аренду задачи. Вызывается по heartbeat от воркера.
+func (q *TaskQueue) ExtendLease(ctx context.Context, taskID string, lease time.Duration) error {
+	deadline := time.Now().Add(lease).UnixNano()
+	if err := q.rdb.ZAdd(ctx, leasesKey, goredis.Z{
+		Score:  float64(deadline),
+		Member: taskID,
+	}).Err(); err != nil {
+		return fmt.Errorf("extend lease: %w", err)
+	}
+	if err := q.rdb.HSet(ctx, "task:"+taskID, "lease_deadline", deadline).Err(); err != nil {
+		return fmt.Errorf("update lease deadline: %w", err)
+	}
+	return nil
+}
+
+// ExpiredLeases возвращает task_id, у которых lease истёк.
+func (q *TaskQueue) ExpiredLeases(ctx context.Context, limit int) ([]string, error) {
+	now := time.Now().UnixNano()
+	ids, err := q.rdb.ZRangeByScore(ctx, leasesKey, &goredis.ZRangeBy{
+		Min:    "-inf",
+		Max:    fmt.Sprintf("%d", now),
+		Offset: 0,
+		Count:  int64(limit),
+	}).Result()
+	if err != nil {
+		return nil, fmt.Errorf("zrangebyscore: %w", err)
+	}
+	return ids, nil
+}
+
+// RemoveLease снимает задачу с учёта аренды.
+func (q *TaskQueue) RemoveLease(ctx context.Context, taskID string) error {
+	pipe := q.rdb.TxPipeline()
+	pipe.ZRem(ctx, leasesKey, taskID)
+	pipe.HDel(ctx, "task:"+taskID, "lease_deadline")
+	if _, err := pipe.Exec(ctx); err != nil {
+		return fmt.Errorf("remove lease: %w", err)
+	}
+	return nil
+}
+
+// Remove убирает задачу из очереди. Если её там нет — не ошибка.
+func (q *TaskQueue) Remove(ctx context.Context, taskID string) error {
+	if err := q.rdb.ZRem(ctx, queueKey, taskID).Err(); err != nil {
+		return fmt.Errorf("zrem from queue: %w", err)
+	}
+	return nil
 }

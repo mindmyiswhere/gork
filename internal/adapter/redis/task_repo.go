@@ -127,3 +127,17 @@ func parseInt64(s string) (int64, error) {
 	_, err := fmt.Sscanf(s, "%d", &v)
 	return v, err
 }
+
+func (r *TaskRepository) UpdateAttempt(ctx context.Context, id string, attempt int32) error {
+	if err := r.rdb.HSet(ctx, taskKey(id), "attempt", attempt).Err(); err != nil {
+		return fmt.Errorf("redis hset attempt: %w", err)
+	}
+	return nil
+}
+
+func (r *TaskRepository) UpdateWorkerID(ctx context.Context, id, workerID string) error {
+	if err := r.rdb.HSet(ctx, taskKey(id), "worker_id", workerID).Err(); err != nil {
+		return fmt.Errorf("redis hset worker_id: %w", err)
+	}
+	return nil
+}

@@ -55,7 +55,7 @@ func (t *Task) CanTransitionTo(next TaskStatus) bool {
 	case StatusPending:
 		return next == StatusRunning || next == StatusCancelled
 	case StatusRunning:
-		return next == StatusSucceeded || next == StatusFailed || next == StatusPending
+		return next == StatusSucceeded || next == StatusFailed || next == StatusPending || next == StatusCancelled
 	case StatusSucceeded, StatusFailed, StatusCancelled:
 		return false
 	default:

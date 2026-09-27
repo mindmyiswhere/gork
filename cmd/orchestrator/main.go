@@ -7,11 +7,14 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/joho/godotenv"
 
+	redisadapter "github.com/mindmyiswhere/gork/internal/adapter/redis"
 	"github.com/mindmyiswhere/gork/internal/config"
 	"github.com/mindmyiswhere/gork/internal/infra"
+	"github.com/mindmyiswhere/gork/internal/usecase"
 )
 
 func main() {
@@ -36,7 +39,6 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// Redis
 	rdb, err := infra.NewRedisClient(ctx, cfg.Redis)
 	if err != nil {
 		logger.Error("failed to connect to redis", "err", err)
@@ -45,8 +47,15 @@ func main() {
 	defer rdb.Close()
 	logger.Info("connected to redis", "addr", cfg.Redis.Addr)
 
-	// gRPC-сервер
-	srv := infra.NewGRPCServer(rdb)
+	taskRepo := redisadapter.NewTaskRepository(rdb)
+	taskQueue := redisadapter.NewTaskQueue(rdb)
+	eventBus := redisadapter.NewTaskEventBus(rdb)
+	cancelStore := redisadapter.NewTaskCancelStore(rdb)
+
+	srv := infra.NewGRPCServer(taskRepo, taskQueue, eventBus, cancelStore)
+
+	reapTasks := usecase.NewReapTasks(taskRepo, taskQueue, eventBus, cancelStore)
+	go infra.RunReaper(ctx, reapTasks, 2*time.Second, 100)
 
 	errCh := make(chan error, 1)
 	go func() {

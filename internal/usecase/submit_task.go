@@ -48,7 +48,7 @@ func (uc *SubmitTask) Execute(ctx context.Context, in SubmitTaskInput) (*SubmitT
 		MaxRetries: in.MaxRetries,
 		Timeout:    in.Timeout,
 		Status:     domain.StatusPending,
-		Attempt:    0,
+		Attempt:    1,
 		CreatedAt:  uc.now(),
 		UpdatedAt:  uc.now(),
 	}

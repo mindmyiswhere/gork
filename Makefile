@@ -1,6 +1,5 @@
 .PHONY: proto build lint test \
         run-orch run-worker \
-        up-gork down-gork \
         redis-up redis-down
 
 # Кодогенерация
@@ -17,8 +16,7 @@ proto:
 # Сборка и проверки
 build: proto
 	@go build -o bin/orchestrator ./cmd/orchestrator
-	
-# go build -o bin/worker ./cmd/worker
+	@go build -o bin/worker ./cmd/worker
 
 lint:
 	@golangci-lint run ./...
@@ -32,13 +30,6 @@ run-orch: build
 
 run-worker: build
 	@./bin/worker
-
-# Docker Compose
-up-gork:
-	@docker compose up -d
-
-down-gork:
-	@docker compose down
 
 # Redis отдельно (для локальной разработки)
 redis-up:

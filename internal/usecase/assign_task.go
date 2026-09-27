@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"time"
 
 	"github.com/mindmyiswhere/gork/internal/domain"
 )
@@ -12,10 +14,21 @@ type AssignTask struct {
 	repo     TaskRepository
 	queue    TaskQueue
 	registry *WorkerRegistry
+	bus      TaskEventBus
+	lease    time.Duration
 }
 
-func NewAssignTask(repo TaskRepository, queue TaskQueue, registry *WorkerRegistry) *AssignTask {
-	return &AssignTask{repo: repo, queue: queue, registry: registry}
+func NewAssignTask(
+	repo TaskRepository,
+	queue TaskQueue,
+	registry *WorkerRegistry,
+	bus TaskEventBus,
+	lease time.Duration,
+) *AssignTask {
+	if lease <= 0 {
+		lease = 60 * time.Second
+	}
+	return &AssignTask{repo: repo, queue: queue, registry: registry, bus: bus, lease: lease}
 }
 
 // Execute пытается выдать одну задачу указанному воркеру.
@@ -29,7 +42,7 @@ func (uc *AssignTask) Execute(ctx context.Context, workerID string) (*domain.Tas
 		return nil, nil
 	}
 
-	taskID, err := uc.queue.Pop(ctx, workerID, w.SupportedTypes)
+	taskID, err := uc.queue.Pop(ctx, workerID, w.SupportedTypes, uc.lease)
 	if err != nil {
 		return nil, fmt.Errorf("pop from queue: %w", err)
 	}
@@ -47,5 +60,9 @@ func (uc *AssignTask) Execute(ctx context.Context, workerID string) (*domain.Tas
 
 	task.Status = domain.StatusRunning
 	task.WorkerID = workerID
+
+	if err := uc.bus.Publish(ctx, task); err != nil {
+		slog.Error("publish running event failed", "task_id", task.ID, "err", err)
+	}
 	return task, nil
 }

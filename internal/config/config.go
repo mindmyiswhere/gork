@@ -4,14 +4,25 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
 // Config — конфигурация оркестратора, собранная из переменных окружения.
 type Config struct {
-	GRPC  GRPCConfig
-	Redis RedisConfig
-	Log   LogConfig
+	GRPC   GRPCConfig
+	Redis  RedisConfig
+	Log    LogConfig
+	Worker WorkerConfig
+}
+
+type WorkerConfig struct {
+	ID                string
+	OrchestratorAddr  string
+	Concurrency       int32
+	SupportedTypes    []string
+	HeartbeatInterval time.Duration
+	ReconnectBackoff  time.Duration
 }
 
 type GRPCConfig struct {
@@ -54,6 +65,14 @@ func Load() (*Config, error) {
 			Level:  getEnv("GORK_LOG_LEVEL", "info"),
 			Format: getEnv("GORK_LOG_FORMAT", "text"),
 		},
+		Worker: WorkerConfig{
+			ID:                getEnv("GORK_WORKER_ID", ""),
+			OrchestratorAddr:  getEnv("GORK_ORCHESTRATOR_ADDR", "localhost:50051"),
+			Concurrency:       int32(getEnvInt("GORK_WORKER_CONCURRENCY", 4)),
+			SupportedTypes:    getEnvList("GORK_WORKER_TYPES", nil),
+			HeartbeatInterval: getEnvDuration("GORK_WORKER_HEARTBEAT_INTERVAL", 5*time.Second),
+			ReconnectBackoff:  getEnvDuration("GORK_WORKER_RECONNECT_BACKOFF", 3*time.Second),
+		},
 	}
 
 	if err := cfg.validate(); err != nil {
@@ -81,8 +100,6 @@ func (c *Config) validate() error {
 	}
 	return nil
 }
-
-// ===== helpers =====
 
 func getEnv(key, fallback string) string {
 	if v, ok := os.LookupEnv(key); ok && v != "" {
@@ -113,4 +130,19 @@ func getEnvDuration(key string, fallback time.Duration) time.Duration {
 		return fallback
 	}
 	return d
+}
+
+func getEnvList(key string, fallback []string) []string {
+	v, ok := os.LookupEnv(key)
+	if !ok || v == "" {
+		return fallback
+	}
+	parts := strings.Split(v, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }

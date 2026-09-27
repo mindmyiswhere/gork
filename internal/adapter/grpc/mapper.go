@@ -39,6 +39,7 @@ func taskToProto(t *domain.Task) *orchestratorv1.Task {
 		Payload:    t.Payload,
 		Priority:   t.Priority,
 		MaxRetries: t.MaxRetries,
+		Attempt:    t.Attempt,
 		CreatedAt:  timestamppb.New(t.CreatedAt),
 	}
 	if t.Timeout > 0 {

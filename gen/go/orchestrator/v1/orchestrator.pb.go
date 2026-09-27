@@ -85,12 +85,13 @@ func (TaskStatus) EnumDescriptor() ([]byte, []int) {
 type Task struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Type          string                 `protobuf:"bytes,2,opt,name=type,proto3" json:"type,omitempty"`          // "send_email", "resize_image", ...
-	Payload       []byte                 `protobuf:"bytes,3,opt,name=payload,proto3" json:"payload,omitempty"`    // произвольные данные задачи
-	Priority      int32                  `protobuf:"varint,4,opt,name=priority,proto3" json:"priority,omitempty"` // больше = важнее
+	Type          string                 `protobuf:"bytes,2,opt,name=type,proto3" json:"type,omitempty"`
+	Payload       []byte                 `protobuf:"bytes,3,opt,name=payload,proto3" json:"payload,omitempty"`
+	Priority      int32                  `protobuf:"varint,4,opt,name=priority,proto3" json:"priority,omitempty"`
 	MaxRetries    int32                  `protobuf:"varint,5,opt,name=max_retries,json=maxRetries,proto3" json:"max_retries,omitempty"`
-	Timeout       *durationpb.Duration   `protobuf:"bytes,6,opt,name=timeout,proto3" json:"timeout,omitempty"`
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	Attempt       int32                  `protobuf:"varint,6,opt,name=attempt,proto3" json:"attempt,omitempty"`
+	Timeout       *durationpb.Duration   `protobuf:"bytes,7,opt,name=timeout,proto3" json:"timeout,omitempty"`
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -156,6 +157,13 @@ func (x *Task) GetPriority() int32 {
 func (x *Task) GetMaxRetries() int32 {
 	if x != nil {
 		return x.MaxRetries
+	}
+	return 0
+}
+
+func (x *Task) GetAttempt() int32 {
+	if x != nil {
+		return x.Attempt
 	}
 	return 0
 }
@@ -760,10 +768,14 @@ func (x *Heartbeat) GetRunningTaskIds() []string {
 	return nil
 }
 
-// Задание задачи воркеру.
+// Задание задачи воркеру или команда отмены.
 type TaskAssignment struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Task          *Task                  `protobuf:"bytes,1,opt,name=task,proto3" json:"task,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Msg:
+	//
+	//	*TaskAssignment_Task
+	//	*TaskAssignment_Cancel
+	Msg           isTaskAssignment_Msg `protobuf_oneof:"msg"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -798,28 +810,116 @@ func (*TaskAssignment) Descriptor() ([]byte, []int) {
 	return file_orchestrator_v1_orchestrator_proto_rawDescGZIP(), []int{11}
 }
 
-func (x *TaskAssignment) GetTask() *Task {
+func (x *TaskAssignment) GetMsg() isTaskAssignment_Msg {
 	if x != nil {
-		return x.Task
+		return x.Msg
 	}
 	return nil
+}
+
+func (x *TaskAssignment) GetTask() *Task {
+	if x != nil {
+		if x, ok := x.Msg.(*TaskAssignment_Task); ok {
+			return x.Task
+		}
+	}
+	return nil
+}
+
+func (x *TaskAssignment) GetCancel() *CancelCommand {
+	if x != nil {
+		if x, ok := x.Msg.(*TaskAssignment_Cancel); ok {
+			return x.Cancel
+		}
+	}
+	return nil
+}
+
+type isTaskAssignment_Msg interface {
+	isTaskAssignment_Msg()
+}
+
+type TaskAssignment_Task struct {
+	Task *Task `protobuf:"bytes,1,opt,name=task,proto3,oneof"`
+}
+
+type TaskAssignment_Cancel struct {
+	Cancel *CancelCommand `protobuf:"bytes,2,opt,name=cancel,proto3,oneof"`
+}
+
+func (*TaskAssignment_Task) isTaskAssignment_Msg() {}
+
+func (*TaskAssignment_Cancel) isTaskAssignment_Msg() {}
+
+// Команда отмены задачи, отправляется воркеру через стрим.
+type CancelCommand struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	Reason        string                 `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CancelCommand) Reset() {
+	*x = CancelCommand{}
+	mi := &file_orchestrator_v1_orchestrator_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CancelCommand) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CancelCommand) ProtoMessage() {}
+
+func (x *CancelCommand) ProtoReflect() protoreflect.Message {
+	mi := &file_orchestrator_v1_orchestrator_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CancelCommand.ProtoReflect.Descriptor instead.
+func (*CancelCommand) Descriptor() ([]byte, []int) {
+	return file_orchestrator_v1_orchestrator_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *CancelCommand) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+func (x *CancelCommand) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
 }
 
 var File_orchestrator_v1_orchestrator_proto protoreflect.FileDescriptor
 
 const file_orchestrator_v1_orchestrator_proto_rawDesc = "" +
 	"\n" +
-	"\"orchestrator/v1/orchestrator.proto\x12\x0forchestrator.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1egoogle/protobuf/duration.proto\"\xf1\x01\n" +
+	"\"orchestrator/v1/orchestrator.proto\x12\x0forchestrator.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1egoogle/protobuf/duration.proto\"\x8b\x02\n" +
 	"\x04Task\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04type\x18\x02 \x01(\tR\x04type\x12\x18\n" +
 	"\apayload\x18\x03 \x01(\fR\apayload\x12\x1a\n" +
 	"\bpriority\x18\x04 \x01(\x05R\bpriority\x12\x1f\n" +
 	"\vmax_retries\x18\x05 \x01(\x05R\n" +
-	"maxRetries\x123\n" +
-	"\atimeout\x18\x06 \x01(\v2\x19.google.protobuf.DurationR\atimeout\x129\n" +
+	"maxRetries\x12\x18\n" +
+	"\aattempt\x18\x06 \x01(\x05R\aattempt\x123\n" +
+	"\atimeout\x18\a \x01(\v2\x19.google.protobuf.DurationR\atimeout\x129\n" +
 	"\n" +
-	"created_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\xa2\x01\n" +
+	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\xa2\x01\n" +
 	"\n" +
 	"TaskResult\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x123\n" +
@@ -855,9 +955,14 @@ const file_orchestrator_v1_orchestrator_proto_rawDesc = "" +
 	"\vconcurrency\x18\x03 \x01(\x05R\vconcurrency\"R\n" +
 	"\tHeartbeat\x12\x1b\n" +
 	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x12(\n" +
-	"\x10running_task_ids\x18\x02 \x03(\tR\x0erunningTaskIds\";\n" +
-	"\x0eTaskAssignment\x12)\n" +
-	"\x04task\x18\x01 \x01(\v2\x15.orchestrator.v1.TaskR\x04task*\xa9\x01\n" +
+	"\x10running_task_ids\x18\x02 \x03(\tR\x0erunningTaskIds\"~\n" +
+	"\x0eTaskAssignment\x12+\n" +
+	"\x04task\x18\x01 \x01(\v2\x15.orchestrator.v1.TaskH\x00R\x04task\x128\n" +
+	"\x06cancel\x18\x02 \x01(\v2\x1e.orchestrator.v1.CancelCommandH\x00R\x06cancelB\x05\n" +
+	"\x03msg\"@\n" +
+	"\rCancelCommand\x12\x17\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x16\n" +
+	"\x06reason\x18\x02 \x01(\tR\x06reason*\xa9\x01\n" +
 	"\n" +
 	"TaskStatus\x12\x1b\n" +
 	"\x17TASK_STATUS_UNSPECIFIED\x10\x00\x12\x17\n" +
@@ -889,7 +994,7 @@ func file_orchestrator_v1_orchestrator_proto_rawDescGZIP() []byte {
 }
 
 var file_orchestrator_v1_orchestrator_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_orchestrator_v1_orchestrator_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_orchestrator_v1_orchestrator_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_orchestrator_v1_orchestrator_proto_goTypes = []any{
 	(TaskStatus)(0),               // 0: orchestrator.v1.TaskStatus
 	(*Task)(nil),                  // 1: orchestrator.v1.Task
@@ -904,33 +1009,35 @@ var file_orchestrator_v1_orchestrator_proto_goTypes = []any{
 	(*Register)(nil),              // 10: orchestrator.v1.Register
 	(*Heartbeat)(nil),             // 11: orchestrator.v1.Heartbeat
 	(*TaskAssignment)(nil),        // 12: orchestrator.v1.TaskAssignment
-	(*durationpb.Duration)(nil),   // 13: google.protobuf.Duration
-	(*timestamppb.Timestamp)(nil), // 14: google.protobuf.Timestamp
+	(*CancelCommand)(nil),         // 13: orchestrator.v1.CancelCommand
+	(*durationpb.Duration)(nil),   // 14: google.protobuf.Duration
+	(*timestamppb.Timestamp)(nil), // 15: google.protobuf.Timestamp
 }
 var file_orchestrator_v1_orchestrator_proto_depIdxs = []int32{
-	13, // 0: orchestrator.v1.Task.timeout:type_name -> google.protobuf.Duration
-	14, // 1: orchestrator.v1.Task.created_at:type_name -> google.protobuf.Timestamp
+	14, // 0: orchestrator.v1.Task.timeout:type_name -> google.protobuf.Duration
+	15, // 1: orchestrator.v1.Task.created_at:type_name -> google.protobuf.Timestamp
 	0,  // 2: orchestrator.v1.TaskResult.status:type_name -> orchestrator.v1.TaskStatus
-	13, // 3: orchestrator.v1.SubmitTaskRequest.timeout:type_name -> google.protobuf.Duration
+	14, // 3: orchestrator.v1.SubmitTaskRequest.timeout:type_name -> google.protobuf.Duration
 	10, // 4: orchestrator.v1.WorkerMessage.register:type_name -> orchestrator.v1.Register
 	11, // 5: orchestrator.v1.WorkerMessage.heartbeat:type_name -> orchestrator.v1.Heartbeat
 	2,  // 6: orchestrator.v1.WorkerMessage.result:type_name -> orchestrator.v1.TaskResult
 	1,  // 7: orchestrator.v1.TaskAssignment.task:type_name -> orchestrator.v1.Task
-	3,  // 8: orchestrator.v1.ClientService.SubmitTask:input_type -> orchestrator.v1.SubmitTaskRequest
-	5,  // 9: orchestrator.v1.ClientService.GetTask:input_type -> orchestrator.v1.GetTaskRequest
-	6,  // 10: orchestrator.v1.ClientService.WatchTask:input_type -> orchestrator.v1.WatchTaskRequest
-	7,  // 11: orchestrator.v1.ClientService.CancelTask:input_type -> orchestrator.v1.CancelTaskRequest
-	9,  // 12: orchestrator.v1.WorkerService.Work:input_type -> orchestrator.v1.WorkerMessage
-	4,  // 13: orchestrator.v1.ClientService.SubmitTask:output_type -> orchestrator.v1.SubmitTaskResponse
-	2,  // 14: orchestrator.v1.ClientService.GetTask:output_type -> orchestrator.v1.TaskResult
-	2,  // 15: orchestrator.v1.ClientService.WatchTask:output_type -> orchestrator.v1.TaskResult
-	8,  // 16: orchestrator.v1.ClientService.CancelTask:output_type -> orchestrator.v1.CancelTaskResponse
-	12, // 17: orchestrator.v1.WorkerService.Work:output_type -> orchestrator.v1.TaskAssignment
-	13, // [13:18] is the sub-list for method output_type
-	8,  // [8:13] is the sub-list for method input_type
-	8,  // [8:8] is the sub-list for extension type_name
-	8,  // [8:8] is the sub-list for extension extendee
-	0,  // [0:8] is the sub-list for field type_name
+	13, // 8: orchestrator.v1.TaskAssignment.cancel:type_name -> orchestrator.v1.CancelCommand
+	3,  // 9: orchestrator.v1.ClientService.SubmitTask:input_type -> orchestrator.v1.SubmitTaskRequest
+	5,  // 10: orchestrator.v1.ClientService.GetTask:input_type -> orchestrator.v1.GetTaskRequest
+	6,  // 11: orchestrator.v1.ClientService.WatchTask:input_type -> orchestrator.v1.WatchTaskRequest
+	7,  // 12: orchestrator.v1.ClientService.CancelTask:input_type -> orchestrator.v1.CancelTaskRequest
+	9,  // 13: orchestrator.v1.WorkerService.Work:input_type -> orchestrator.v1.WorkerMessage
+	4,  // 14: orchestrator.v1.ClientService.SubmitTask:output_type -> orchestrator.v1.SubmitTaskResponse
+	2,  // 15: orchestrator.v1.ClientService.GetTask:output_type -> orchestrator.v1.TaskResult
+	2,  // 16: orchestrator.v1.ClientService.WatchTask:output_type -> orchestrator.v1.TaskResult
+	8,  // 17: orchestrator.v1.ClientService.CancelTask:output_type -> orchestrator.v1.CancelTaskResponse
+	12, // 18: orchestrator.v1.WorkerService.Work:output_type -> orchestrator.v1.TaskAssignment
+	14, // [14:19] is the sub-list for method output_type
+	9,  // [9:14] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_orchestrator_v1_orchestrator_proto_init() }
@@ -943,13 +1050,17 @@ func file_orchestrator_v1_orchestrator_proto_init() {
 		(*WorkerMessage_Heartbeat)(nil),
 		(*WorkerMessage_Result)(nil),
 	}
+	file_orchestrator_v1_orchestrator_proto_msgTypes[11].OneofWrappers = []any{
+		(*TaskAssignment_Task)(nil),
+		(*TaskAssignment_Cancel)(nil),
+	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_orchestrator_v1_orchestrator_proto_rawDesc), len(file_orchestrator_v1_orchestrator_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   12,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

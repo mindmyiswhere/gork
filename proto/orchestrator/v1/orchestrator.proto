@@ -18,13 +18,14 @@ enum TaskStatus {
 
 // Описание задачи, как её видит оркестратор
 message Task {
-  string id                     = 1;
-  string type                   = 2; // "send_email", "resize_image", ...
-  bytes  payload                = 3; // произвольные данные задачи
-  int32  priority               = 4; // больше = важнее
-  int32  max_retries            = 5;
-  google.protobuf.Duration timeout = 6;
-  google.protobuf.Timestamp created_at = 7;
+  string id                            = 1;
+  string type                          = 2;
+  bytes  payload                       = 3;
+  int32  priority                      = 4;
+  int32  max_retries                   = 5;
+  int32  attempt                       = 6;
+  google.protobuf.Duration timeout     = 7;
+  google.protobuf.Timestamp created_at = 8;
 }
 
 // Результат выполнения задачи.
@@ -109,7 +110,16 @@ message Heartbeat {
   repeated string running_task_ids = 2;
 }
 
-// Задание задачи воркеру.
+// Задание задачи воркеру или команда отмены.
 message TaskAssignment {
-  Task task = 1;
+  oneof msg {
+    Task task = 1;
+    CancelCommand cancel = 2;
+  }
+}
+
+// Команда отмены задачи, отправляется воркеру через стрим.
+message CancelCommand {
+  string task_id = 1;
+  string reason  = 2;
 }
